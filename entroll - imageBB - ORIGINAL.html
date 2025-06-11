@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Enrollment</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <div class="max-w-6xl mx-auto py-10 px-4">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Student Group Project Enrollment</h1>
+      <button onclick="toggleForm()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow hover:bg-blue-700 transition">Enroll Project</button>
+    </div>
+
+    <!-- Enrollment Form -->
+    <div id="formContainer" class="bg-white p-6 rounded-2xl shadow-xl mb-10 hidden">
+      <form id="projectForm" class="space-y-4">
+        <div class="grid md:grid-cols-2 gap-4">
+          <input name="groupId" type="text" placeholder="Group ID" class="w-full p-3 border rounded-xl" required />
+          <input name="groupName" type="text" placeholder="Group Name" class="w-full p-3 border rounded-xl" required />
+        </div>
+
+        <div>
+          <label class="block mb-1 font-medium text-gray-700">Group Logo Image (JPG/PNG)</label>
+          <input id="groupLogoInput" name="groupLogo" type="file" accept="image/png, image/jpeg" class="w-full p-3 border rounded-xl bg-white" required />
+          <div id="logoPreviewContainer" class="mt-2 hidden">
+            <p class="text-gray-600 text-sm mb-1">Preview:</p>
+            <img id="logoPreview" class="w-20 h-20 rounded-xl object-cover border" alt="Logo Preview" />
+          </div>
+        </div>
+
+        <textarea name="groupMembers" placeholder="Group Members (comma separated)" class="w-full p-3 border rounded-xl" required></textarea>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <select name="projectStatus" class="w-full p-3 border rounded-xl" required>
+            <option value="">Select Status</option>
+            <option value="Working">Working</option>
+            <option value="Completed">Completed</option>
+          </select>
+          <input name="submitterEmail" type="email" placeholder="Your Email (for future edits)" class="w-full p-3 border rounded-xl" required />
+        </div>
+
+        <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-xl hover:bg-green-700 transition">Submit</button>
+      </form>
+    </div>
+
+    <!-- Search bar -->
+    <input type="text" id="searchInput" placeholder="Search by Group Name"
+      onkeyup="filterGroups()"
+      class="w-full p-3 mb-4 rounded-xl border border-gray-300 shadow-sm"/>
+
+    <!-- Enrolled Groups Table -->
+    <div class="overflow-auto rounded-xl shadow bg-white">
+      <table class="min-w-full text-sm text-gray-800">
+        <thead class="bg-gray-200 text-left">
+          <tr>
+            <th class="p-4">Group ID</th>
+            <th class="p-4">Logo</th>
+            <th class="p-4">Group Name</th>
+            <th class="p-4">Members</th>
+            <th class="p-4">Status</th>
+            <th class="p-4">Enroll Date</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody" class="divide-y divide-gray-100"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div id="successModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+    <div class="bg-white p-10 w-2/4 aspect-[2/1] rounded-2xl shadow-xl text-center flex flex-col justify-center items-center">
+      <h2 class="text-2xl font-bold text-green-600 mb-4">Submit Successfully</h2>
+      <button onclick="closeModal()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">OK</button>
+    </div>
+  </div>
+
+  <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbx7uG5Of9ygkLUSJ-oS5zm8JyfLzrKG4tENiKFkvbJFXIJ0cLQ6jshgkSgca9HuptLzYg/exec'; // Replace with your Google Script URL
+    const imageBBAPIKey = '420eb56aa4f5fe4ce94f637761834c3c'; // Replace with your ImageBB API Key
+
+    function toggleForm() {
+      document.getElementById('formContainer').classList.toggle('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('successModal').classList.add('hidden');
+    }
+
+    document.getElementById('groupLogoInput').addEventListener('change', function (event) {
+      const file = event.target.files[0];
+      const previewContainer = document.getElementById('logoPreviewContainer');
+      const preview = document.getElementById('logoPreview');
+
+      if (file && (file.type === 'image/png' || file.type === 'image/jpeg')) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          preview.src = e.target.result;
+          previewContainer.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      } else {
+        previewContainer.classList.add('hidden');
+        preview.src = '';
+      }
+    });
+
+    document.getElementById('projectForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const form = e.target;
+      const formData = new FormData(form);
+      const file = form.querySelector('input[name="groupLogo"]').files[0];
+
+      if (!file) return alert("Please upload a logo image.");
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Image = reader.result;
+
+        try {
+          // Upload image to ImageBB
+          const uploadRes = await fetch(`https://api.imgbb.com/1/upload?key=${imageBBAPIKey}`, {
+            method: 'POST',
+            body: new URLSearchParams({
+              image: base64Image.split(',')[1] // Extract base64 data without the data URL prefix
+            })
+          });
+
+          const result = await uploadRes.json();
+          const imageUrl = result.data.url; // Get the public URL
+
+          const data = Object.fromEntries(formData.entries());
+          data.groupLogo = imageUrl;
+          data.enrollDate = new Date().toISOString();
+
+          // Submit form data to Google Apps Script
+          await fetch(scriptURL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'submitForm',
+              formData: data
+            })
+          });
+
+          // Show success modal
+          document.getElementById('successModal').classList.remove('hidden');
+
+          form.reset();
+          document.getElementById('logoPreviewContainer').classList.add('hidden');
+          toggleForm();
+          loadTable();
+        } catch (err) {
+          console.error(err);
+          alert("Enrollment Failed");
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function loadTable() {
+      fetch(scriptURL)
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.getElementById('tableBody');
+          tbody.innerHTML = '';
+          data.forEach(row => {
+            tbody.innerHTML += `
+              <tr class="hover:bg-gray-50">
+                <td class="p-4">${row.groupId}</td>
+                <td class="p-4"><img src="${row.groupLogo}" alt="Logo" class="w-14 h-14 object-cover rounded-xl border" /></td>
+                <td class="p-4">${row.groupName}</td>
+                <td class="p-4">${row.groupMembers}</td>
+                <td class="p-4">${row.projectStatus}</td>
+                <td class="p-4">${new Date(row.enrollDate).toLocaleDateString()}</td>
+              </tr>`;
+          });
+        });
+    }
+
+    function filterGroups() {
+      const input = document.getElementById('searchInput').value.toLowerCase();
+      const rows = document.querySelectorAll('#tableBody tr');
+      rows.forEach(row => {
+        const groupName = row.cells[2].innerText.toLowerCase();
+        row.style.display = groupName.includes(input) ? '' : 'none';
+      });
+    }
+
+    loadTable();
+  </script>
+</body>
+</html>
